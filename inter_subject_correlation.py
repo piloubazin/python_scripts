@@ -75,10 +75,10 @@ def main() :
                                                avgfmri, avgcount, avgmask, p0, pM, runtimes)
     
     # export results (resampled to avg space)
-    transform = nb.load(transformfiles[0]).header
-    nx = transform.get_data_shape[X]
-    ny = transform.get_data_shape[Y]
-    nz = transform.get_data_shape[Z]
+    transform = nb.load(transformfiles[0])
+    nx = transform.header.get_data_shape()[X]
+    ny = transform.header.get_data_shape()[Y]
+    nz = transform.header.get_data_shape()[Z]
     resampled = np.zeros((nx,ny,nz,nsubjects))
     for x in xrange(p0[X],pM[X]):
         for y in xrange(p0[Y],pM[Y]):

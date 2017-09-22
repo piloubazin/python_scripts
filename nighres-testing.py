@@ -15,11 +15,13 @@ print(parser.parse_args(sys.argv))
 
 imgfiles = parser.parse_args(sys.argv).imgfiles
 outdirs = parser.parse_args(sys.argv).outdir
+if outdirs==None : outdir = None
+else : outdir = outdirs[0]
 
 if len(imgfiles)==2:
 	nh.registration.embedded_syn(source_image=imgfiles[0], target_image=imgfiles[1], coarse_iterations=20, medium_iterations=0, fine_iterations=0,
 					run_affine_first=True, cost_function='CrossCorrelation', interpolation='NearestNeighbor',
-                    save_data=True, output_dir=outdirs[0],
+                    save_data=True, output_dir=outdir,
                     file_name=None)
 
 if len(imgfiles)==4:
@@ -28,5 +30,5 @@ if len(imgfiles)==4:
 							max_iterations=500, normalize_probabilities=False,
 							correct_wm_pv=True, wm_dropoff_dist=1.0,
 							topology='wcs', topology_lut_dir=None,
-							save_data=True, output_dir=outdirs[0],
+							save_data=True, output_dir=outdir,
 							file_name=None)
