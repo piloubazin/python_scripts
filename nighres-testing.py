@@ -26,8 +26,8 @@ if len(imgfiles)==2:
 
 if len(imgfiles)==4:
     nh.cortex.cruise_cortex_extraction(init_image=imgfiles[0], wm_image=imgfiles[1], gm_image=imgfiles[2], csf_image=imgfiles[3], vd_image=None,
-							data_weight=0.4, regularization_weight=0.1,
-							max_iterations=500, normalize_probabilities=False,
+							data_weight=0.9, regularization_weight=0.1,
+							max_iterations=800, normalize_probabilities=True,
 							correct_wm_pv=True, wm_dropoff_dist=1.0,
 							topology='wcs', topology_lut_dir=None,
 							save_data=True, output_dir=outdir,

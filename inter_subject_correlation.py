@@ -7,46 +7,8 @@ import numpy as np
 import sys
 import os
 import argparse
-from scipy.fftpack import fft, ifft
 
-parser = argparse.ArgumentParser()
-parser.add_argument('command')
-parser.add_argument('-o', '--outdir', nargs=1, help='output directory (default: input directory)')
-parser.add_argument('-f', '--fmri', nargs='*', metavar='sub#:run1,run2...', help='list of fMRI time series (4D) per run per subject')
-parser.add_argument('-m', '--mask', nargs='*', metavar='sub#:run1,run2...', help='list of masks (3D) per run per subject')
-parser.add_argument('-t', '--transform', nargs='*', metavar='sub#:run1,run2...', help='list of transformations (coordinate mappings) to group space per run per subject')
-parser.add_argument('-mc', '--meancutoff', nargs='?', default=0.0001, help='mask out voxels with (normalized) mean over time below cutoff')
-parser.add_argument('-gc', '--groupcutoff', nargs='?', default=0.5, help='discard voxels with fewer subjects than this fraction of the group')
-parser.add_argument('-sf', '--skip_first', nargs='?', default=0, help='skip time frames at the beginning of each run')
-parser.add_argument('-sl', '--skip_last', nargs='?', default=0, help='skip time frames at the end of each run')
-parser.add_argument('-nr', '--nruns', nargs='?', default=1, help='number of runs per subject')
-print(parser.parse_args(sys.argv))
-
-# load the parameters
-fmrifiles = parser.parse_args(sys.argv).fmri
-maskfiles = parser.parse_args(sys.argv).mask
-transformfiles = parser.parse_args(sys.argv).transform
-outdir = parser.parse_args(sys.argv).outdir
-if outdir==None:
-    outdir = os.getcwd()
-    print("input/output directory: "+outdir)
-else:
-    outdir = outdir[0]
-    print("output directory: "+outdir)
-if (outdir[-1]!='/') : outdir +='/'
-
-meancutoff = float(parser.parse_args(sys.argv).meancutoff)
-groupcutoff = float(parser.parse_args(sys.argv).groupcutoff)
-skip_first = int(parser.parse_args(sys.argv).skip_first)
-skip_last = int(parser.parse_args(sys.argv).skip_last)
-nruns = int(parser.parse_args(sys.argv).nruns)
-nsubjects = int(len(fmrifiles)/nruns)
-
-
-basename = os.path.basename(fmrifiles[0])
-basename = basename.split(".")
-
-print('ISC: '+str(nsubjects)+" subjects x "+str(nruns)+" runs, (mc,gc,sf,sl): ",meancutoff,groupcutoff,skip_first,skip_last)
+# global variables / flags
 
 # for debugging / information
 debug = True
@@ -62,20 +24,69 @@ Y=1
 Z=2
 T=3
 
+
 def main() :
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument('command')
+    parser.add_argument('-o', '--outdir', nargs=1, help='output directory (default: input directory)')
+    parser.add_argument('-f', '--fmri', nargs='*', metavar='sub#:run1,run2...', help='list of fMRI time series (4D) per run per subject')
+    parser.add_argument('-m', '--mask', nargs='*', metavar='sub#:run1,run2...', help='list of masks (3D) per run per subject')
+    parser.add_argument('-t', '--transform', nargs='*', metavar='sub#:run1,run2...', help='list of transformations (coordinate mappings) to group space per run per subject')
+    parser.add_argument('-mc', '--meancutoff', nargs='?', default=0.0001, help='mask out voxels with (normalized) mean over time below cutoff')
+    parser.add_argument('-gc', '--groupcutoff', nargs='?', default=0.5, help='discard voxels with fewer subjects than this fraction of the group')
+    parser.add_argument('-sf', '--skip_first', nargs='?', default=0, help='skip time frames at the beginning of each run')
+    parser.add_argument('-sl', '--skip_last', nargs='?', default=0, help='skip time frames at the end of each run')
+    parser.add_argument('-nr', '--nruns', nargs='?', default=1, help='number of runs per subject')
+    print(parser.parse_args(sys.argv))
+    
+    # load the parameters
+    fmri_files = parser.parse_args(sys.argv).fmri
+    mask_files = parser.parse_args(sys.argv).mask
+    transform_files = parser.parse_args(sys.argv).transform
+    outdir = parser.parse_args(sys.argv).outdir
+    if outdir==None:
+        outdir = os.getcwd()
+        print("input/output directory: "+outdir)
+    else:
+        outdir = outdir[0]
+        print("output directory: "+outdir)
+    if (outdir[-1]!='/') : outdir +='/'
+    
+    meancutoff = float(parser.parse_args(sys.argv).meancutoff)
+    groupcutoff = float(parser.parse_args(sys.argv).groupcutoff)
+    skip_first = int(parser.parse_args(sys.argv).skip_first)
+    skip_last = int(parser.parse_args(sys.argv).skip_last)
+    nruns = int(parser.parse_args(sys.argv).nruns)
+    nsubjects = int(len(fmri_files)/nruns)
+    
+    inter_subject_correlation(fmri_files, mask_files, transform_files, outdir, nsubjects, 
+                                nruns=nruns, skip_first=skip_first, skip_last=skip_last, 
+                                meancutoff=meancutoff, groupcutoff=groupcutoff)
+    return
+
+
+def inter_subject_correlation(fmri_files, mask_files, transform_files, outdir, nsubjects, 
+                                nruns=1, skip_first=3, skip_last=0, meancutoff=0.0001, groupcutoff=0.5) :
+
+    # 0. setup global variables and such
+    basename = os.path.basename(fmri_files[0])
+    basename = basename.split(".")
+    
+    print('ISC: '+str(nsubjects)+" subjects x "+str(nruns)+" runs, (mc,gc,sf,sl): ",meancutoff,groupcutoff,skip_first,skip_last)
+    
     # 1. build a global average of all subjects (removing voxels with low intensity, missing values, and z-scoring the rest)
-    (avgfmri, avgcount, avgmask, p0, pM, runtimes) = build_average(fmrifiles, maskfiles, transformfiles, 
+    (avgfmri, avgcount, avgmask, p0, pM, runtimes) = build_average(fmri_files, mask_files, transform_files, outdir,
                                                                     nsubjects, nruns, skip_first, skip_last, 
                                                                     meancutoff, groupcutoff)
     
     # 2. for each subject, remove data from the average and compute the correlation
-    correlation = compute_subject_correlations(fmrifiles, maskfiles, transformfiles, 
-                                               nsubjects, nruns, skip_first, skip_last, 
+    correlation = compute_subject_correlations(fmri_files, mask_files, transform_files, outdir,
+                                               nsubjects, nruns, skip_first, skip_last, meancutoff,
                                                avgfmri, avgcount, avgmask, p0, pM, runtimes)
     
     # export results (resampled to avg space)
-    transform = nb.load(transformfiles[0])
+    transform = nb.load(transform_files[0])
     nx = transform.header.get_data_shape()[X]
     ny = transform.header.get_data_shape()[Y]
     nz = transform.header.get_data_shape()[Z]
@@ -96,15 +107,18 @@ def main() :
     
     # 3. additional statistics?
 
-    return
+    # outputs the filename rather than the entire file itself for easier handling
+    return outname
 
 
-def compute_subject_correlations(fmrifiles, maskfiles, transformfiles, nsubjects, nruns, skip_first, skip_last, avgfmri, avgcount, avgmask, p0, pM, runtimes) :
+def compute_subject_correlations(fmri_files, mask_files, transform_files, outdir,
+                                nsubjects, nruns, skip_first, skip_last, meancutoff,
+                                avgfmri, avgcount, avgmask, p0, pM, runtimes) :
 
     # test for consistency
     # here we assume the same numbers of subjects x runs for all data
     # (different versions could be made for simpler cases)
-    if not ( len(fmrifiles) == len(maskfiles) and len(fmrifiles) == len(transformfiles) and len(fmrifiles) == nsubjects*nruns):
+    if not ( len(fmri_files) == len(mask_files) and len(fmri_files) == len(transform_files) and len(fmri_files) == nsubjects*nruns):
         print("!different number of masks, transform and fmri data than specified subjects and runs!")
         return
 
@@ -118,10 +132,10 @@ def compute_subject_correlations(fmrifiles, maskfiles, transformfiles, nsubjects
         var_avg = np.zeros((pM[X]-p0[X],pM[Y]-p0[Y],pM[Z]-p0[Z]))
         samples = np.zeros((pM[X]-p0[X],pM[Y]-p0[Y],pM[Z]-p0[Z]))
         for r in xrange(nruns) :
-            subjectrun = nb.load(fmrifiles[r+s*nruns])
+            subjectrun = nb.load(fmri_files[r+s*nruns])
             fmri = subjectrun.get_data()
-            transform = nb.load(transformfiles[r+s*nruns]).get_data()
-            mask = nb.load(maskfiles[r+s*nruns]).get_data()
+            transform = nb.load(transform_files[r+s*nruns]).get_data()
+            mask = nb.load(mask_files[r+s*nruns]).get_data()
         
             fmri = build_zscore(fmri, mask, transform, skip_first, skip_last, meancutoff)
             
@@ -159,21 +173,24 @@ def compute_subject_correlations(fmrifiles, maskfiles, transformfiles, nsubjects
                                                
     return correlation                       
 
-def build_average( fmrifiles, maskfiles, transformfiles, nsubjects, nruns, skip_first, skip_last, meancutoff, groupcutoff) :
+
+def build_average( fmri_files, mask_files, transform_files, outdir,
+                    nsubjects, nruns, skip_first, skip_last, 
+                    meancutoff, groupcutoff) :
     
     # test for consistency
     # here we assume the same numbers of subjects x runs for all data
     # (different versions could be made for simpler cases)
-    if not ( len(fmrifiles) == len(maskfiles) and len(fmrifiles) == len(transformfiles) and len(fmrifiles) == nsubjects*nruns):
+    if not ( len(fmri_files) == len(mask_files) and len(fmri_files) == len(transform_files) and len(fmri_files) == nsubjects*nruns):
         print("!different number of masks, transform and fmri data than specified subjects and runs!")
         return
         
     # init from first subject
-    if debug : print("opening file: "+maskfiles[0])
-    mask = nb.load(maskfiles[0]).get_data()
+    if debug : print("opening file: "+mask_files[0])
+    mask = nb.load(mask_files[0]).get_data()
     
-    if debug : print("opening file: "+transformfiles[0])
-    transform = nb.load(transformfiles[0]).get_data()
+    if debug : print("opening file: "+transform_files[0])
+    transform = nb.load(transform_files[0]).get_data()
     
     # define common space: every non-zero element of the mask is used
     nx = transform.shape[X]
@@ -183,8 +200,8 @@ def build_average( fmrifiles, maskfiles, transformfiles, nsubjects, nruns, skip_
     avgmask = np.zeros(transform.shape[X:T])
     for n in xrange(0,nsubjects*nruns) :
         if debug : print("subject ",n)
-        transform = nb.load(transformfiles[n]).get_data()
-        mask = nb.load(maskfiles[n]).get_data()
+        transform = nb.load(transform_files[n]).get_data()
+        mask = nb.load(mask_files[n]).get_data()
 
         for x in xrange(nx):
             for y in xrange(ny):
@@ -205,7 +222,7 @@ def build_average( fmrifiles, maskfiles, transformfiles, nsubjects, nruns, skip_
     # first run time is zero, simpler for later computations
     runtimes[0] = 0
     for n in xrange(nruns) :
-        fmri_time = nb.load(fmrifiles[n]).header.get_data_shape()[T]
+        fmri_time = nb.load(fmri_files[n]).header.get_data_shape()[T]
         runtimes[n+1] = int(runtimes[n] + fmri_time-skip_first-skip_last)
         
     avgfmri = np.zeros((pM[X]-p0[X],pM[Y]-p0[Y],pM[Z]-p0[Z],runtimes[nruns]))
@@ -218,15 +235,15 @@ def build_average( fmrifiles, maskfiles, transformfiles, nsubjects, nruns, skip_
     # note: for simplicity, the number of missing data points is the maximum over runs per voxel
     for s in xrange(nsubjects) :
         for r in xrange(nruns) :
-            subjectrun = nb.load(fmrifiles[r+s*nruns])
+            subjectrun = nb.load(fmri_files[r+s*nruns])
             fmri = subjectrun.get_data()
-            transform = nb.load(transformfiles[r+s*nruns]).get_data()
-            mask = nb.load(maskfiles[r+s*nruns]).get_data()
+            transform = nb.load(transform_files[r+s*nruns]).get_data()
+            mask = nb.load(mask_files[r+s*nruns]).get_data()
         
             fmri = build_zscore(fmri, mask, transform, skip_first, skip_last, meancutoff)
             # option: save the masked, z-scored time series?
             if savezscores :
-                imgname = os.path.basename(fmrifiles[r+s*nruns])
+                imgname = os.path.basename(fmri_files[r+s*nruns])
                 basename = imgname.split(".")
                 outname = outdir+basename[0]+"_zscored."+'.'.join(basename[1:])
                 print("saving to: "+outname)
@@ -261,7 +278,7 @@ def build_average( fmrifiles, maskfiles, transformfiles, nsubjects, nruns, skip_
                         for t in xrange(runtimes[r], runtimes[r+1]) :
                             avgfmri[x-p0[X],y-p0[Y],z-p0[Z],t] /= avgcount[x-p0[X],y-p0[Y],z-p0[Z],r]
     if saveavgfmri :
-        imgname = os.path.basename(fmrifiles[0])
+        imgname = os.path.basename(fmri_files[0])
         basename = imgname.split(".")
         outname = outdir+basename[0]+"_avgfmri."+'.'.join(basename[1:])
         print("saving to: "+outname)
@@ -318,4 +335,5 @@ def build_zscore(fmri, mask, transform, skip_first, skip_last, meancutoff) :
                         fmri[xi,yi,zi,ti] = 0
     return fmri
 
-main()
+if __name__ == "__main__":
+    main()
