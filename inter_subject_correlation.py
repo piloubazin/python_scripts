@@ -33,6 +33,7 @@ def main() :
     parser.add_argument('-f', '--fmri', nargs='*', metavar='sub#:run1,run2...', help='list of fMRI time series (4D) per run per subject')
     parser.add_argument('-m', '--mask', nargs='*', metavar='sub#:run1,run2...', help='list of masks (3D) per run per subject')
     parser.add_argument('-t', '--transform', nargs='*', metavar='sub#:run1,run2...', help='list of transformations (coordinate mappings) to group space per run per subject')
+    parser.add_argument('-jf', '--jsonfile', nargs=1, help='json file listing fmri data, masks, and transforms')
     parser.add_argument('-mc', '--meancutoff', nargs='?', default=0.0001, help='mask out voxels with (normalized) mean over time below cutoff')
     parser.add_argument('-gc', '--groupcutoff', nargs='?', default=0.5, help='discard voxels with fewer subjects than this fraction of the group')
     parser.add_argument('-sf', '--skip_first', nargs='?', default=0, help='skip time frames at the beginning of each run')
@@ -41,9 +42,20 @@ def main() :
     print(parser.parse_args(sys.argv))
     
     # load the parameters
-    fmri_files = parser.parse_args(sys.argv).fmri
-    mask_files = parser.parse_args(sys.argv).mask
-    transform_files = parser.parse_args(sys.argv).transform
+    subject_list = None
+    json_file = parser.parse_args(sys.argv).jsonfile
+    if json_file != None:
+        inputs = input_json_file(json_file[0])
+        fmri_files = inputs['fmri']
+        mask_files = inputs['mask']
+        transform_files = inputs['transform']
+        subject_list = inputs['subject']
+        run_list = inputs['run']
+    else:
+        fmri_files = parser.parse_args(sys.argv).fmri
+        mask_files = parser.parse_args(sys.argv).mask
+        transform_files = parser.parse_args(sys.argv).transform
+        
     outdir = parser.parse_args(sys.argv).outdir
     if outdir==None:
         outdir = os.getcwd()
@@ -57,8 +69,22 @@ def main() :
     groupcutoff = float(parser.parse_args(sys.argv).groupcutoff)
     skip_first = int(parser.parse_args(sys.argv).skip_first)
     skip_last = int(parser.parse_args(sys.argv).skip_last)
-    nruns = int(parser.parse_args(sys.argv).nruns)
-    nsubjects = int(len(fmri_files)/nruns)
+    
+    if subject_list != None :
+        nsubjects = max(subject_list)
+        nruns = max(run_list)
+    else:    
+        nruns = int(parser.parse_args(sys.argv).nruns)
+        nsubjects = int(len(fmri_files)/nruns)
+        run_list = []
+        subject_list = []
+        for sub in xrange(nsubjects):
+            for run in xrange(nruns):
+                run_list.append(int(run)+1)
+                subject_list.append(int(sub)+1)
+    
+    print("subjects = "+str(subject_list))
+    print("runs = "+str(run_list))
     
     inter_subject_correlation(fmri_files, mask_files, transform_files, outdir, nsubjects, 
                                 nruns=nruns, skip_first=skip_first, skip_last=skip_last, 
@@ -334,6 +360,38 @@ def build_zscore(fmri, mask, transform, skip_first, skip_last, meancutoff) :
                     for ti in xrange(skip_first, fmri.shape[T]-skip_last) :
                         fmri[xi,yi,zi,ti] = 0
     return fmri
+
+
+def input_json_file(json_file) :
+    import json
+    
+    print("Loading :"+json_file)
+    
+    with open(json_file, 'r') as f:
+        data = json.load(f)
+
+    basedir = os.path.dirname(json_file)
+
+    subject = []
+    run = []
+    fmri = []
+    mask = []
+    transform = []
+    for record in data :
+        subject.append(int(record['subject']))
+        run.append(int(record['run']))
+        fmri.append(os.path.join(basedir, str(record['fmri'])))
+        mask.append(os.path.join(basedir, str(record['mask'])))
+        transform.append(os.path.join(basedir, str(record['transform'])))
+ 
+    print("subjects = "+str(subject))
+    print("runs = "+str(run))
+    print("fmri = "+str(fmri))
+    print("mask = "+str(mask))
+    print("transform = "+str(transform))
+
+    return {'fmri':fmri, 'mask':mask, 'transform':transform, 'subject':subject, 'run':run}
+
 
 if __name__ == "__main__":
     main()
