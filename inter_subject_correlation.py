@@ -342,7 +342,7 @@ def build_average( fmri_files, mask_files, transform_files, outdir,
        
         avgfmri[cropped[:,:,:,X],cropped[:,:,:,Y],cropped[:,:,:,Z],runtimes[r-1]:runtimes[r]] \
                 += (mask[transform[:,:,:,X],transform[:,:,:,Y],transform[:,:,:,Z]]>0) \
-                *fmri[transform[:,:,:,X],transform[:,:,:,Y],transform[:,:,:,Z],:]
+                *fmri[transform[:,:,:,X],transform[:,:,:,Y],transform[:,:,:,Z],skip_first:fmri.shape[T]-skip_last]
                 
         avgcount[cropped[:,:,:,X],cropped[:,:,:,Y],cropped[:,:,:,Z],r-1] \
                 += (mask[transform[:,:,:,X],transform[:,:,:,Y],transform[:,:,:,Z]]>0)
