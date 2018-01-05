@@ -336,9 +336,9 @@ def build_average( fmri_files, mask_files, transform_files, outdir,
         # build the global average: array version?
         transform = np.rint(transform).astype(int)
         cropped = transform-p0[np.newaxis,np.newaxis,np.newaxis,:]
-        np.clip(cropped[:,:,:,X], 0, fmri.shape[X]-1, out=cropped[:,:,:,X])
-        np.clip(cropped[:,:,:,Y], 0, fmri.shape[Y]-1, out=cropped[:,:,:,Y])
-        np.clip(cropped[:,:,:,Z], 0, fmri.shape[Z]-1, out=cropped[:,:,:,Z])
+        np.clip(cropped[:,:,:,X], 0, pM[X]-p0[X]-1, out=cropped[:,:,:,X])
+        np.clip(cropped[:,:,:,Y], 0, pM[Y]-p0[Y]-1, out=cropped[:,:,:,Y])
+        np.clip(cropped[:,:,:,Z], 0, pM[Z]-p0[Z]-1, out=cropped[:,:,:,Z])
        
         avgfmri[cropped[:,:,:,X],cropped[:,:,:,Y],cropped[:,:,:,Z],runtimes[r-1]:runtimes[r]] \
                 += (mask[transform[:,:,:,X],transform[:,:,:,Y],transform[:,:,:,Z]]>0) \
