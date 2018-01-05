@@ -159,7 +159,10 @@ def compute_subject_correlations(fmri_files, mask_files, transform_files, outdir
     # test for consistency
     # here we assume the same numbers of subjects x runs for all data
     # (different versions could be made for simpler cases)
-    if not ( len(fmri_files) == len(mask_files) and len(fmri_files) == len(transform_files) and len(fmri_files) == nsubjects*nruns):
+    if not ( len(fmri_files) == len(mask_files) 
+            and len(fmri_files) == len(transform_files) 
+            and len(fmri_files) == len(subjects) 
+            and len(fmri_files) == len(runs) ):
         print("!different number of masks, transform and fmri data than specified subjects and runs!")
         return
 
@@ -238,7 +241,10 @@ def build_average( fmri_files, mask_files, transform_files, outdir,
     # test for consistency
     # here we assume the same numbers of subjects x runs for all data
     # (different versions could be made for simpler cases)
-    if not ( len(fmri_files) == len(mask_files) and len(fmri_files) == len(transform_files) and len(fmri_files) == nsubjects*nruns):
+    if not ( len(fmri_files) == len(mask_files) 
+            and len(fmri_files) == len(transform_files) 
+            and len(fmri_files) == len(subjects) 
+            and len(fmri_files) == len(runs) ):
         print("!different number of masks, transform and fmri data than specified subjects and runs!")
         return
         
@@ -260,28 +266,23 @@ def build_average( fmri_files, mask_files, transform_files, outdir,
         transform = nb.load(transform_files[n]).get_data()
         mask = nb.load(mask_files[n]).get_data()
 
-        for x in range(nx):
-            for y in range(ny):
-                for z in range(nz):
-                    xp = int(np.rint(transform[x,y,z,X]))
-                    yp = int(np.rint(transform[x,y,z,Y]))
-                    zp = int(np.rint(transform[x,y,z,Z]))
-                    avgmask[x,y,z] += mask[xp,yp,zp]
+        transform = np.rint(transform).astype(int)
+        avgmask += mask[transform[:,:,:,X],transform[:,:,:,Y],transform[:,:,:,Z]]
              
     # find mask boundaries
     indices = np.nonzero(avgmask)
-    p0 = (int(np.min(indices[X])),int(np.min(indices[Y])),int(np.min(indices[Z])))
-    pM = (int(np.max(indices[X])+1),int(np.max(indices[Y])+1),int(np.max(indices[Z])+1))
+    p0 = np.array([int(np.min(indices[X])),int(np.min(indices[Y])),int(np.min(indices[Z]))])
+    pM = np.array([int(np.max(indices[X])+1),int(np.max(indices[Y])+1),int(np.max(indices[Z])+1)])
     print("analysis bounding box (global space): "+str(p0)+", "+str(pM))
     
     # create average fmri only within the mask, concatenate the runs
     runtimes = list(range(nruns+1))
     # first run time is zero, simpler for later computations
     runtimes[0] = 0
-    for n in range(nruns) :
-        f = runs.index(n+1)
-        fmri_time = nb.load(fmri_files[f]).header.get_data_shape()[T]
-        runtimes[n+1] = int(runtimes[n] + fmri_time-skip_first-skip_last)
+    for n in range(len(fmri_files)) :
+        f = runs[n]
+        fmri_time = nb.load(fmri_files[n]).shape[T]
+        runtimes[f] = int(runtimes[f-1] + fmri_time-skip_first-skip_last)
         
     if debug : print("runtimes: "+str(runtimes))    
             
@@ -312,23 +313,39 @@ def build_average( fmri_files, mask_files, transform_files, outdir,
             basename = imgname.split(".")
             outname = outdir+basename[0]+"_zscored."+'.'.join(basename[1:])
             print("saving to: "+outname)
-            outimg = nb.Nifti1Image(fmri, subjectrun.affine, subjectrun.header)
-            outimg.header['cal_min'] = np.min(fmri)
-            outimg.header['cal_max'] = np.max(fmri)
+            header = subjectrun.get_header()
+            affine = subjectrun.get_affine()
+            header['cal_min'] = np.min(fmri)
+            header['cal_max'] = np.max(fmri)
+            outimg = nb.Nifti1Image(fmri, affine, header)
             outimg.to_filename(outname)	
 
         # build the global average
-        for x in range(p0[X],pM[X]):
-            for y in range(p0[Y],pM[Y]):
-                for z in range(p0[Z],pM[Z]):
-                    xp = int(np.rint(transform[x,y,z,X]))
-                    yp = int(np.rint(transform[x,y,z,Y]))
-                    zp = int(np.rint(transform[x,y,z,Z]))
-                    
-                    if (mask[xp,yp,zp]>0) :
-                        for t in range(skip_first, fmri.shape[T]-skip_last) :
-                            avgfmri[x-p0[X],y-p0[Y],z-p0[Z],runtimes[r-1]+t-skip_first] += fmri[xp,yp,zp,t]
-                        avgcount[x-p0[X],y-p0[Y],z-p0[Z],r-1] += 1
+#        for x in range(p0[X],pM[X]):
+#            for y in range(p0[Y],pM[Y]):
+#                for z in range(p0[Z],pM[Z]):
+#                    xp = int(np.rint(transform[x,y,z,X]))
+#                    yp = int(np.rint(transform[x,y,z,Y]))
+#                    zp = int(np.rint(transform[x,y,z,Z]))
+#                    
+#                    if (mask[xp,yp,zp]>0) :
+#                        for t in range(skip_first, fmri.shape[T]-skip_last) :
+#                            avgfmri[x-p0[X],y-p0[Y],z-p0[Z],runtimes[r-1]+t-skip_first] += fmri[xp,yp,zp,t]
+#                        avgcount[x-p0[X],y-p0[Y],z-p0[Z],r-1] += 1
+						
+        # build the global average: array version?
+        transform = np.rint(transform).astype(int)
+        cropped = transform-p0[np.newaxis,np.newaxis,np.newaxis,:]
+        np.clip(cropped[:,:,:,X], 0, fmri.shape[X]-1, out=cropped[:,:,:,X])
+        np.clip(cropped[:,:,:,Y], 0, fmri.shape[Y]-1, out=cropped[:,:,:,Y])
+        np.clip(cropped[:,:,:,Z], 0, fmri.shape[Z]-1, out=cropped[:,:,:,Z])
+       
+        avgfmri[cropped[:,:,:,X],cropped[:,:,:,Y],cropped[:,:,:,Z],runtimes[r-1]:runtimes[r]] \
+                += (mask[transform[:,:,:,X],transform[:,:,:,Y],transform[:,:,:,Z]]>0) \
+                *fmri[transform[:,:,:,X],transform[:,:,:,Y],transform[:,:,:,Z],:]
+                
+        avgcount[cropped[:,:,:,X],cropped[:,:,:,Y],cropped[:,:,:,Z],r-1] \
+                += (mask[transform[:,:,:,X],transform[:,:,:,Y],transform[:,:,:,Z]]>0)
 						
     # final step: average, discard data with unsufficient number of subjects
     for x in range(p0[X],pM[X]):
@@ -364,40 +381,52 @@ def build_average( fmri_files, mask_files, transform_files, outdir,
 
 
 def build_zscore(fmri, mask, transform, skip_first, skip_last, meancutoff) :
-    nix = fmri.shape[X]
-    niy = fmri.shape[Y]
-    niz = fmri.shape[Z]
+#    nix = fmri.shape[X]
+#    niy = fmri.shape[Y]
+#    niz = fmri.shape[Z]
+#    # find mean, stdev,max within mask
+#    for xi in range(nix):
+#        for yi in range(niy):
+#            for zi in range(niz):
+#                fmean = 0
+#                fmax = 0
+#                fden = 0
+#                if (mask[xi,yi,zi]>0) :
+#                    for ti in range(skip_first, fmri.shape[T]-skip_last) :
+#                        fmean += fmri[xi,yi,zi,ti]
+#                        if (fmri[xi,yi,zi,ti]>fmax) : fmax = fmri[xi,yi,zi,ti]
+#                        fden += 1
+#                if (fden>0) : fmean /= fden
+#                
+#                # mask out data with low raw values
+#                if (fmean<=meancutoff*fmax) : mask[xi,yi,zi] = 0
+#                
+#                fstd = 0
+#                if (mask[xi,yi,zi]>0) :
+#                    for ti in range(skip_first, fmri.shape[T]-skip_last) :
+#                       fmri[xi,yi,zi,ti] -= fmean
+#                       fstd += fmri[xi,yi,zi,ti]*fmri[xi,yi,zi,ti]
+#                if (fden>1) : fstd = np.sqrt(fstd/(fden-1))
+#                
+#                # z-score
+#                if (mask[xi,yi,zi]>0) and (fstd>0) :
+#                    for ti in range(skip_first, fmri.shape[T]-skip_last) :
+#                        fmri[xi,yi,zi,ti] /= fstd
+#                else :
+#                    for ti in range(skip_first, fmri.shape[T]-skip_last) :
+#                        fmri[xi,yi,zi,ti] = 0
+
     # find mean, stdev,max within mask
-    for xi in range(nix):
-        for yi in range(niy):
-            for zi in range(niz):
-                fmean = 0
-                fmax = 0
-                fden = 0
-                if (mask[xi,yi,zi]>0) :
-                    for ti in range(skip_first, fmri.shape[T]-skip_last) :
-                        fmean += fmri[xi,yi,zi,ti]
-                        if (fmri[xi,yi,zi,ti]>fmax) : fmax = fmri[xi,yi,zi,ti]
-                        fden += 1
-                if (fden>0) : fmean /= fden
-                
-                # mask out data with low raw values
-                if (fmean<=meancutoff*fmax) : mask[xi,yi,zi] = 0
-                
-                fstd = 0
-                if (mask[xi,yi,zi]>0) :
-                    for ti in range(skip_first, fmri.shape[T]-skip_last) :
-                        fmri[xi,yi,zi,ti] -= fmean
-                        fstd += fmri[xi,yi,zi,ti]*fmri[xi,yi,zi,ti]
-                if (fden>1) : fstd = np.sqrt(fstd/(fden-1))
-                
-                # z-score
-                if (mask[xi,yi,zi]>0) and (fstd>0) :
-                    for ti in range(skip_first, fmri.shape[T]-skip_last) :
-                        fmri[xi,yi,zi,ti] /= fstd
-                else :
-                    for ti in range(skip_first, fmri.shape[T]-skip_last) :
-                        fmri[xi,yi,zi,ti] = 0
+    fmean = np.mean(fmri[:,:,:,skip_first:fmri.shape[T]-skip_last], axis=T, dtype=np.float64)
+    fstd = np.std(fmri[:,:,:,skip_first:fmri.shape[T]-skip_last], axis=T, dtype=np.float64)
+    fmax = np.max(fmean)
+    # mask out data with low raw values
+    mask *= (fmean>meancutoff*fmax)      
+    # z-score
+    fmri -= fmean[:,:,:,np.newaxis]
+    fmri = np.divide(fmri, fstd[:,:,:,np.newaxis], where=(mask>0)[:,:,:,np.newaxis])
+    fmri *= (mask>0)[:,:,:,np.newaxis]
+
     return fmri
 
 
@@ -423,12 +452,30 @@ def input_json_file(json_file) :
         mask.append(os.path.join(basedir, str(record['mask'])))
         transform.append(os.path.join(basedir, str(record['transform'])))
  
-    print("subjects = "+str(subject))
-    print("runs = "+str(run))
-    print("fmri = "+str(fmri))
-    print("mask = "+str(mask))
-    print("transform = "+str(transform))
+    #print("subjects = "+str(subject))
+    #print("runs = "+str(run))
+    #print("fmri = "+str(fmri))
+    #print("mask = "+str(mask))
+    #print("transform = "+str(transform))
 
+    # test for existence of the files
+    for path in fmri :
+        if not os.path.isfile(path) :
+            print("missing file: "+str(path))
+            return
+            
+    for path in mask :
+        if not os.path.isfile(path) :
+            print("missing file: "+str(path))
+            return
+            
+    for path in transform :
+        if not os.path.isfile(path) :
+            print("missing file: "+str(path))
+            return
+    
+    print("all files accounted for")
+    
     return {'fmri':fmri, 'mask':mask, 'transform':transform, 'subject':subject, 'run':run}
 
 
