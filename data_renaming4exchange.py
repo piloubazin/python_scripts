@@ -59,6 +59,8 @@ subfolders = ["ses-1/anat/mpm7t/derivatives/qmri/",\
 # where to write the resulting data set
 output_dir = "/path/to/my/data/transfer/folder/"
 
+# whether or not to output the pseudonymization key (only if deemed necessary)
+output_keys = False
 
 # beyond this everything should remain the same (do not change!)
 
@@ -119,4 +121,13 @@ for num,sub in enumerate(indices[0:ndata]):
         shutil.copyfile(data, copied)
     
 print("done")    
+
+if output_keys:
+    print("--- pseudonymization key ---")
+    for num,sub in enumerate(indices[0:ndata]):
+        newsub = 'sub-'+source+'2'+target+today+"n"+str(num+1).zfill(4)
+        print(subjects[sub]+" -> "+newsub)
+        
+    print("--- pseudonymization key ---")
+
 
